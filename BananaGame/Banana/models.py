@@ -9,6 +9,7 @@ class Player(models.Model):
     super_bananas = models.IntegerField(default=0)
     achievements = models.JSONField(default=list)  # list of unlocked achievement ids
     high_score = models.IntegerField(default=0)
+    current_puzzle = models.JSONField(default=dict, blank=True)
 
 class Score(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

@@ -4,8 +4,6 @@ from rest_framework import status
 from .serializers import RegisterSerializer, CustomTokenObtainPairSerializer, PlayerSerializer, ScoreSerializer
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from .models import Player, Score
 
 # @api_view(['POST'])
@@ -47,32 +45,6 @@ def login(request):
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
     return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def logout(request):
-    refresh_token = request.data.get('refresh')
-    if not refresh_token:
-        return Response({"detail": "Refresh token required"}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-    except TokenError:
-        return Response({"detail": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST)
-
-    return Response({"detail": "Logout successful"}, status=status.HTTP_200_OK)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def logout_all(request):
-    for token in OutstandingToken.objects.filter(user=request.user):
-        _, _ = BlacklistedToken.objects.get_or_create(token=token)
-
-    return Response({"detail": "All sessions logged out"}, status=status.HTTP_200_OK)
-
-
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def player_detail(request):
@@ -93,22 +65,53 @@ def player_detail(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def submit_score(request):
-    serializer = ScoreSerializer(data=request.data)
-    if serializer.is_valid():
-        score_instance = serializer.save(user=request.user)
+    try:
+        score_value = request.data.get('score')
+
+        if score_value is None:
+            return Response({"detail": "Missing score field"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create the score record
+        score_instance = Score.objects.create(user=request.user, score=int(score_value))
+
+        # Update player's high score if this one is higher
         player, created = Player.objects.get_or_create(user=request.user)
         if score_instance.score > player.high_score:
             player.high_score = score_instance.score
             player.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Return lightweight response for frontend
+        return Response({
+            "username": request.user.username,
+            "score": score_instance.score,
+            "message": "Score submitted successfully"
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+from django.db.models import Max
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def leaderboard(request):
-    scores = Score.objects.order_by('-score')[:10]
-    serializer = ScoreSerializer(scores, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    # Get the highest score per user
+    top_scores = (
+        Score.objects
+        .values('user__username')
+        .annotate(highest_score=Max('score'))
+        .order_by('-highest_score')[:10]
+    )
+
+    # Format for serializer-like output
+    leaderboard_data = [
+        {'username': item['user__username'], 'score': item['highest_score']}
+        for item in top_scores
+    ]
+
+    return Response(leaderboard_data, status=status.HTTP_200_OK)
+
 
 
 import requests
@@ -116,17 +119,62 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 
+import requests
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from .models import Player
+
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def fetch_puzzle(request):
-    """
-    Proxy for Banana Puzzle API to bypass CORS and provide puzzle data.
-    """
     try:
         res = requests.get("https://marcconrad.com/uob/banana/api.php", timeout=5)
-        if res.status_code == 200:
-            return JsonResponse(res.json(), safe=False)
-        else:
+        if res.status_code != 200:
             return JsonResponse({"error": "Failed to fetch puzzle"}, status=res.status_code)
+
+        data = res.json()
+        player, _ = Player.objects.get_or_create(user=request.user)
+        player.current_puzzle = data  # Save the puzzle (includes solution)
+        player.save()
+
+        # Remove the solution before sending to the frontend
+        data.pop('solution', None)
+        return JsonResponse(data, safe=False)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from .models import Player
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_puzzle_answer(request):
+    try:
+        user_answer = str(request.data.get('answer', '')).strip()
+        if not user_answer:
+            return JsonResponse({"error": "Missing answer"}, status=400)
+
+        player, _ = Player.objects.get_or_create(user=request.user)
+        puzzle_data = player.current_puzzle or {}
+
+        real_solution = str(puzzle_data.get('solution', '')).strip()
+        if not real_solution:
+            return JsonResponse({"error": "No puzzle stored. Please fetch again."}, status=400)
+
+        correct = user_answer == real_solution
+
+        # Clear the stored puzzle after checking
+        player.current_puzzle = {}
+        player.save()
+
+        if correct:
+            return JsonResponse({"correct": True})
+        else:
+            return JsonResponse({"correct": False, "correct_answer": real_solution})
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
