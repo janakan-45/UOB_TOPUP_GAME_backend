@@ -84,4 +84,33 @@ class ScoreSerializer(serializers.ModelSerializer):
         model = Score
         fields = ['username', 'score', 'date']
 
+
+class EmailOTPRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class EmailOTPVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp_code = serializers.CharField(max_length=6, min_length=6, required=False)
+    otp = serializers.CharField(max_length=6, min_length=6, required=False, write_only=True)
+
+    def validate_otp_code(self, value):
+        if not value.isdigit():
+            raise ValidationError("OTP must contain only digits")
+        return value
+
+    def validate(self, attrs):
+        otp_code = attrs.get('otp_code')
+        otp = attrs.get('otp')
+
+        if not otp_code and not otp:
+            raise ValidationError({"otp_code": "This field is required."})
+
+        final_code = otp_code or otp
+        if not final_code.isdigit():
+            raise ValidationError({"otp_code": "OTP must contain only digits"})
+
+        attrs['otp_code'] = final_code
+        attrs.pop('otp', None)
+        return attrs
         
