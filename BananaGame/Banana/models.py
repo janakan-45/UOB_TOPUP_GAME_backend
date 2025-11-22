@@ -91,3 +91,63 @@ class OTP(models.Model):
         otp.is_used = True
         otp.save(update_fields=['is_used'])
         return True, "OTP verified successfully."
+
+
+class Contact(models.Model):
+    """Contact form submissions"""
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    subject = models.CharField(max_length=200)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Contact Submission"
+        verbose_name_plural = "Contact Submissions"
+    
+    def __str__(self):
+        return f"{self.name} - {self.subject}"
+
+
+class Rating(models.Model):
+    """User ratings for the game"""
+    RATING_CHOICES = [
+        (1, '1 Star'),
+        (2, '2 Stars'),
+        (3, '3 Stars'),
+        (4, '4 Stars'),
+        (5, '5 Stars'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ratings')
+    rating = models.IntegerField(choices=RATING_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = ['user']  # One rating per user
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.rating} stars"
+
+
+class Review(models.Model):
+    """User reviews for the game"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    rating = models.IntegerField(choices=Rating.RATING_CHOICES, null=True, blank=True)
+    is_approved = models.BooleanField(default=False)  # Admin can approve reviews
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Review"
+        verbose_name_plural = "Reviews"
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.title}"

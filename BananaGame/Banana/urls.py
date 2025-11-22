@@ -20,5 +20,18 @@ urlpatterns = [
     path('daily-challenge/', views.get_daily_challenge, name='get-daily-challenge'),
     path('claim-daily-challenge/', views.claim_daily_challenge, name='claim-daily-challenge'),
     path('game-stats/', views.get_game_stats, name='get-game-stats'),
+    
+    # Contact Us
+    path('contact/', views.submit_contact, name='submit-contact'),
+    
+    # Ratings
+    path('ratings/', views.get_ratings, name='get-ratings'),
+    path('ratings/submit/', views.submit_rating, name='submit-rating'),
+    path('ratings/my-rating/', views.get_user_rating, name='get-user-rating'),
+    
+    # Reviews
+    path('reviews/', views.get_reviews, name='get-reviews'),
+    path('reviews/submit/', views.submit_review, name='submit-review'),
+    path('reviews/my-reviews/', views.get_user_reviews, name='get-user-reviews'),
 
 ]

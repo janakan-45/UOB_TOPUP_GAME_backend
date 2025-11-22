@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Player, Score
+from .models import Player, Score, Contact, Rating, Review
 
 def validate_register_data(data):
     if not data.get('username') or len(data['username']) < 3:
@@ -115,4 +115,53 @@ class EmailOTPVerifySerializer(serializers.Serializer):
         attrs['otp_code'] = final_code
         attrs.pop('otp', None)
         return attrs
+
+
+class ContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contact
+        fields = ['name', 'email', 'subject', 'message']
+    
+    def create(self, validated_data):
+        return Contact.objects.create(**validated_data)
+
+
+class RatingSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = Rating
+        fields = ['id', 'username', 'rating', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class RatingCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Rating
+        fields = ['rating']
+    
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise ValidationError("Rating must be between 1 and 5")
+        return value
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = Review
+        fields = ['id', 'username', 'title', 'content', 'rating', 'is_approved', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'is_approved', 'created_at', 'updated_at']
+
+
+class ReviewCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Review
+        fields = ['title', 'content', 'rating']
+    
+    def validate_rating(self, value):
+        if value is not None and (value < 1 or value > 5):
+            raise ValidationError("Rating must be between 1 and 5")
+        return value
         

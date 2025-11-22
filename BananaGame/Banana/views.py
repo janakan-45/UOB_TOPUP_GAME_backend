@@ -17,8 +17,13 @@ from .serializers import (
     ScoreSerializer,
     EmailOTPRequestSerializer,
     EmailOTPVerifySerializer,
+    ContactSerializer,
+    RatingSerializer,
+    RatingCreateSerializer,
+    ReviewSerializer,
+    ReviewCreateSerializer,
 )
-from .models import Player, Score, OTP
+from .models import Player, Score, OTP, Contact, Rating, Review
 
 logger = logging.getLogger(__name__)
 # @api_view(['POST'])
@@ -73,6 +78,48 @@ def send_otp_email(email, otp_code):
         return True
     except Exception as exc:
         logger.error("Failed to send OTP email: %s", exc)
+        return False
+
+
+def send_contact_thankyou_email(name, email):
+    """Send thank you email after contact form submission"""
+    try:
+        subject = 'Thank You for Contacting Banana Brain Blitz!'
+        message = (
+            f'Hello {name},\n\n'
+            'Thank you for contacting us! We have received your message and will get back to you as soon as possible.\n\n'
+            'We appreciate your interest in Banana Brain Blitz and look forward to assisting you.\n\n'
+            'Best regards,\n'
+            'Banana Brain Blitz Team'
+        )
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', getattr(settings, 'EMAIL_HOST_USER', None))
+        recipient_list = [email]
+        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        return True
+    except Exception as exc:
+        logger.error("Failed to send contact thank you email: %s", exc)
+        return False
+
+
+def send_review_thankyou_email(user_email, username, review_title):
+    """Send thank you email after review submission"""
+    try:
+        subject = 'Thank You for Your Review - Banana Brain Blitz!'
+        message = (
+            f'Hello {username},\n\n'
+            'Thank you for taking the time to review Banana Brain Blitz!\n\n'
+            f'We have received your review titled "{review_title}". '
+            'Your review will be reviewed by our team and will be published once approved.\n\n'
+            'We truly appreciate your feedback and support!\n\n'
+            'Best regards,\n'
+            'Banana Brain Blitz Team'
+        )
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', getattr(settings, 'EMAIL_HOST_USER', None))
+        recipient_list = [user_email]
+        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        return True
+    except Exception as exc:
+        logger.error("Failed to send review thank you email: %s", exc)
         return False
 
 
@@ -604,6 +651,166 @@ def get_game_stats(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
+
+# Contact Us Views
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def submit_contact(request):
+    """Submit a contact form"""
+    try:
+        serializer = ContactSerializer(data=request.data)
+        if serializer.is_valid():
+            contact = serializer.save()
+            
+            # Send thank you email to the user
+            try:
+                send_contact_thankyou_email(contact.name, contact.email)
+            except Exception as email_error:
+                logger.error("Failed to send contact thank you email: %s", email_error)
+                # Don't fail the request if email fails, just log it
+            
+            return Response({
+                "message": "Thank you for contacting us! We'll get back to you soon.",
+                "id": contact.id
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Rating Views
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_ratings(request):
+    """Get all ratings with average"""
+    try:
+        ratings = Rating.objects.all()
+        serializer = RatingSerializer(ratings, many=True)
+        
+        # Calculate average rating
+        if ratings.exists():
+            avg_rating = sum(r.rating for r in ratings) / ratings.count()
+            total_ratings = ratings.count()
+        else:
+            avg_rating = 0
+            total_ratings = 0
+        
+        return Response({
+            "ratings": serializer.data,
+            "average_rating": round(avg_rating, 2),
+            "total_ratings": total_ratings
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_rating(request):
+    """Submit or update a rating"""
+    try:
+        rating_value = request.data.get('rating')
+        if not rating_value:
+            return Response({"error": "Rating is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get or create rating for this user
+        rating, created = Rating.objects.get_or_create(
+            user=request.user,
+            defaults={'rating': rating_value}
+        )
+        
+        if not created:
+            # Update existing rating
+            serializer = RatingCreateSerializer(rating, data={'rating': rating_value})
+            if serializer.is_valid():
+                serializer.save()
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            "message": "Rating submitted successfully" if created else "Rating updated successfully",
+            "rating": rating.rating
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_rating(request):
+    """Get current user's rating"""
+    try:
+        try:
+            rating = Rating.objects.get(user=request.user)
+            serializer = RatingSerializer(rating)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Rating.DoesNotExist:
+            return Response({"message": "No rating found"}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Review Views
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_reviews(request):
+    """Get all approved reviews"""
+    try:
+        reviews = Review.objects.filter(is_approved=True)
+        serializer = ReviewSerializer(reviews, many=True)
+        return Response({
+            "reviews": serializer.data,
+            "count": reviews.count()
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_review(request):
+    """Submit a review"""
+    try:
+        serializer = ReviewCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            review = Review.objects.create(
+                user=request.user,
+                **serializer.validated_data
+            )
+            
+            # Send thank you email to the user
+            try:
+                user_email = request.user.email
+                if user_email:
+                    send_review_thankyou_email(user_email, request.user.username, review.title)
+                else:
+                    logger.warning("User %s has no email address, skipping review thank you email", request.user.username)
+            except Exception as email_error:
+                logger.error("Failed to send review thank you email: %s", email_error)
+                # Don't fail the request if email fails, just log it
+            
+            return Response({
+                "message": "Review submitted successfully! It will be visible after admin approval.",
+                "id": review.id
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_reviews(request):
+    """Get current user's reviews"""
+    try:
+        reviews = Review.objects.filter(user=request.user)
+        serializer = ReviewSerializer(reviews, many=True)
+        return Response({
+            "reviews": serializer.data,
+            "count": reviews.count()
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
