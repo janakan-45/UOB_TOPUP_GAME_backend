@@ -277,6 +277,170 @@ def leaderboard(request):
     return Response(leaderboard_data, status=status.HTTP_200_OK)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_certificate(request):
+    """
+    Generate and return certificate PDF for top 3 players
+    """
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import Paragraph, Spacer
+        from reportlab.lib.enums import TA_CENTER
+        from io import BytesIO
+        from django.http import HttpResponse
+        from datetime import datetime
+        
+        # Get leaderboard to check user's rank
+        top_scores = (
+            Score.objects
+            .values('user__username')
+            .annotate(highest_score=Max('score'))
+            .order_by('-highest_score')[:10]
+        )
+        
+        leaderboard_data = [
+            {'username': item['user__username'], 'score': item['highest_score']}
+            for item in top_scores
+        ]
+        
+        # Find user's rank
+        user_rank = None
+        user_score = None
+        for idx, entry in enumerate(leaderboard_data, 1):
+            if entry['username'] == request.user.username:
+                user_rank = idx
+                user_score = entry['score']
+                break
+        
+        # Check if user is in top 3
+        if not user_rank or user_rank > 3:
+            return Response(
+                {"detail": "Certificate is only available for top 3 players."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Create PDF
+        buffer = BytesIO()
+        p = canvas.Canvas(buffer, pagesize=landscape(A4))
+        width, height = landscape(A4)
+        
+        # Background gradient effect (simulated with rectangles)
+        p.setFillColor(colors.HexColor('#FCD34D'))  # Yellow
+        p.rect(0, 0, width, height, fill=1)
+        
+        # Border
+        p.setStrokeColor(colors.HexColor('#F59E0B'))
+        p.setLineWidth(20)
+        p.rect(10, 10, width - 20, height - 20, fill=0, stroke=1)
+        
+        # Inner border
+        p.setStrokeColor(colors.HexColor('#D97706'))
+        p.setLineWidth(5)
+        p.rect(30, 30, width - 60, height - 60, fill=0, stroke=1)
+        
+        # Title
+        p.setFillColor(colors.HexColor('#92400E'))
+        p.setFont("Helvetica-Bold", 48)
+        title = "CERTIFICATE OF ACHIEVEMENT"
+        title_width = p.stringWidth(title, "Helvetica-Bold", 48)
+        p.drawString((width - title_width) / 2, height - 120, title)
+        
+        # Decorative line
+        p.setStrokeColor(colors.HexColor('#92400E'))
+        p.setLineWidth(3)
+        p.line(width * 0.2, height - 160, width * 0.8, height - 160)
+        
+        # Place/Medal
+        place_texts = {1: "CHAMPION", 2: "RUNNER-UP", 3: "THIRD PLACE"}
+        place_colors = {
+            1: colors.HexColor('#FCD34D'),
+            2: colors.HexColor('#9CA3AF'),
+            3: colors.HexColor('#FB923C')
+        }
+        
+        p.setFillColor(place_colors[user_rank])
+        p.setFont("Helvetica-Bold", 36)
+        place_text = place_texts[user_rank]
+        place_width = p.stringWidth(place_text, "Helvetica-Bold", 36)
+        p.drawString((width - place_width) / 2, height - 220, place_text)
+        
+        # Subtitle
+        p.setFillColor(colors.HexColor('#78350F'))
+        p.setFont("Helvetica", 24)
+        subtitle = f"{'First' if user_rank == 1 else 'Second' if user_rank == 2 else 'Third'} Place Winner"
+        subtitle_width = p.stringWidth(subtitle, "Helvetica", 24)
+        p.drawString((width - subtitle_width) / 2, height - 270, subtitle)
+        
+        # "This is to certify that"
+        p.setFillColor(colors.HexColor('#78350F'))
+        p.setFont("Helvetica", 20)
+        certify_text = "This is to certify that"
+        certify_width = p.stringWidth(certify_text, "Helvetica", 20)
+        p.drawString((width - certify_width) / 2, height - 320, certify_text)
+        
+        # Player Name
+        p.setFillColor(colors.HexColor('#1F2937'))
+        p.setFont("Helvetica-Bold", 42)
+        player_name = request.user.username
+        name_width = p.stringWidth(player_name, "Helvetica-Bold", 42)
+        p.drawString((width - name_width) / 2, height - 380, player_name)
+        
+        # Achievement text
+        p.setFillColor(colors.HexColor('#78350F'))
+        p.setFont("Helvetica", 22)
+        achievement_text = f"Has achieved {user_rank}{'st' if user_rank == 1 else 'nd' if user_rank == 2 else 'rd'} Place"
+        achievement_width = p.stringWidth(achievement_text, "Helvetica", 22)
+        p.drawString((width - achievement_width) / 2, height - 440, achievement_text)
+        
+        # Game name
+        p.setFont("Helvetica", 20)
+        game_text = "in the Banana Brain Blitz Game"
+        game_width = p.stringWidth(game_text, "Helvetica", 20)
+        p.drawString((width - game_width) / 2, height - 480, game_text)
+        
+        # Score
+        p.setFont("Helvetica-Bold", 28)
+        score_text = f"Final Score: {user_score} Points"
+        score_width = p.stringWidth(score_text, "Helvetica-Bold", 28)
+        p.drawString((width - score_width) / 2, height - 540, score_text)
+        
+        # Footer
+        p.setFillColor(colors.HexColor('#78350F'))
+        p.setFont("Helvetica", 16)
+        date_text = f"Date: {datetime.now().strftime('%B %d, %Y')}"
+        date_width = p.stringWidth(date_text, "Helvetica", 16)
+        p.drawString((width - date_width) / 2, 80, date_text)
+        
+        # Decorative elements (using text symbols instead of emojis)
+        p.setFont("Helvetica-Bold", 40)
+        p.setFillColor(colors.HexColor('#92400E'))
+        p.drawString(100, height - 100, "*")
+        p.drawString(width - 140, height - 100, "*")
+        p.drawString(100, 120, "*")
+        p.drawString(width - 140, 120, "*")
+        
+        p.showPage()
+        p.save()
+        
+        buffer.seek(0)
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Banana_Game_Certificate_{request.user.username}_{user_rank}st.pdf"'
+        
+        return response
+        
+    except Exception as e:
+        logger.error("Error generating certificate: %s", e)
+        return Response(
+            {"detail": f"Error generating certificate: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 
 import requests
 from django.http import JsonResponse

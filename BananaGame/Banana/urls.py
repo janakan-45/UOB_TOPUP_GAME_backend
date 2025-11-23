@@ -33,5 +33,8 @@ urlpatterns = [
     path('reviews/', views.get_reviews, name='get-reviews'),
     path('reviews/submit/', views.submit_review, name='submit-review'),
     path('reviews/my-reviews/', views.get_user_reviews, name='get-user-reviews'),
+    
+    # Certificate
+    path('certificate/', views.get_certificate, name='get-certificate'),
 
 ]
