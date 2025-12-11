@@ -10,20 +10,19 @@ class Player(models.Model):
     hints = models.IntegerField(default=0)
     freezes = models.IntegerField(default=0)
     super_bananas = models.IntegerField(default=0)
-    achievements = models.JSONField(default=list)  # list of unlocked achievement ids
+    achievements = models.JSONField(default=list) 
     high_score = models.IntegerField(default=0)
     current_puzzle = models.JSONField(default=dict, blank=True)
-    # New game mechanics
-    xp = models.IntegerField(default=0)  # Experience points
-    level = models.IntegerField(default=1)  # Player level
+    xp = models.IntegerField(default=0)  
+    level = models.IntegerField(default=1)  
     difficulty = models.CharField(max_length=10, default='medium', choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')])
-    combo_count = models.IntegerField(default=0)  # Current combo streak
-    max_combo = models.IntegerField(default=0)  # Maximum combo achieved
-    puzzles_solved = models.IntegerField(default=0)  # Total puzzles solved
-    perfect_solves = models.IntegerField(default=0)  # Puzzles solved without hints
-    last_daily_challenge = models.DateField(null=True, blank=True)  # Last daily challenge date
-    daily_challenge_streak = models.IntegerField(default=0)  # Consecutive daily challenges
-    puzzle_history = models.JSONField(default=list)  # Track solved puzzle IDs
+    combo_count = models.IntegerField(default=0)  
+    max_combo = models.IntegerField(default=0)  
+    puzzles_solved = models.IntegerField(default=0)  
+    perfect_solves = models.IntegerField(default=0)  
+    last_daily_challenge = models.DateField(null=True, blank=True)  
+    daily_challenge_streak = models.IntegerField(default=0)  
+    puzzle_history = models.JSONField(default=list)  
 
 class Score(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -128,7 +127,7 @@ class Rating(models.Model):
     
     class Meta:
         ordering = ['-created_at']
-        unique_together = ['user']  # One rating per user
+        unique_together = ['user']  
     
     def __str__(self):
         return f"{self.user.username} - {self.rating} stars"
@@ -140,7 +139,7 @@ class Review(models.Model):
     title = models.CharField(max_length=200)
     content = models.TextField()
     rating = models.IntegerField(choices=Rating.RATING_CHOICES, null=True, blank=True)
-    is_approved = models.BooleanField(default=False)  # Admin can approve reviews
+    is_approved = models.BooleanField(default=False)  
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
