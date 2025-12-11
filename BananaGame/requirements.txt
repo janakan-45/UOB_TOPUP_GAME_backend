@@ -3,22 +3,9 @@ Django>=5.1.0,<6.0.0
 djangorestframework>=3.15.0,<4.0.0
 djangorestframework-simplejwt>=5.4.0,<6.0.0
 django-cors-headers>=4.5.0,<5.0.0
-
-# HTTP Requests (for Banana API puzzle fetching)
 requests>=2.32.0,<3.0.0
-
-# Database Support
-# SQLite is included with Python by default
-# Uncomment the following line if using PostgreSQL:
-# psycopg2-binary>=2.9.0,<3.0.0
-
-# Environment Variables (optional, for .env file support)
 python-dotenv>=1.0.0,<2.0.0
-
-# PDF Generation for Certificates
 reportlab>=4.0.0,<5.0.0
 Pillow>=10.0.0,<11.0.0
 
-# Note: Email functionality uses Django's built-in email backend
-# No additional packages required for SMTP email sending
 
